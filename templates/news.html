@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page">
+  <div class="page-h">
+    <h2>📰 新闻与财报</h2>
+    <div class="muted">东财 7×24 / 雅虎香港 / 聚合频道 · 标的新股 · 财报日历</div>
+  </div>
+
+  <!-- 操作 -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-h">🔄 入库管理 <span class="sub">已入库 {{ stats.rows }} 条 · {{ stats.sources }} 源</span></div>
+    <div class="form-row">
+      <form method="post" action="/news/ingest" style="margin:0"><button class="btn" type="submit">立即拉取入库（三源）</button></form>
+      <form method="post" action="/news/settings" style="margin:0;display:flex;gap:8px;align-items:center">
+        <select name="enabled">
+          <option value="true" {{ 'selected' if cfg.enabled == 'true' else '' }}>定时开启</option>
+          <option value="false" {{ '' if cfg.enabled == 'true' else 'selected' }}>定时关闭</option>
+        </select>
+        <input name="interval_min" value="{{ cfg.interval_min }}" size="6" title="间隔(分钟)">
+        <button class="btn ghost" type="submit">保存</button>
+      </form>
+    </div>
+    {% if result %}<pre class="result">{{ result }}</pre>{% endif %}
+  </div>
+
+  <!-- 财报日历（47 平台） -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-h">📅 财报日历 <span class="sub">47 平台 earnings-calendar · 已入库 {{ earnings_stats.total }} 条</span></div>
+    <div class="form-row">
+      <form method="post" action="/news/earnings" style="margin:0;display:flex;gap:8px;align-items:center">
+        <input name="days" value="30" size="5" title="未来天数">
+        <input name="symbol" placeholder="标的（可选，空=全部）" size="16">
+        <button class="btn" type="submit">拉取财报日历</button>
+      </form>
+    </div>
+    {% if earnings %}
+    <div style="overflow-x:auto;margin-top:8px">
+    <table class="table" style="width:100%;font-size:12px">
+      <thead><tr><th>日期</th><th>标的</th><th>时段</th><th>季度</th><th>EPS 预期</th><th>EPS 实际</th><th>营收预期</th><th>营收实际</th></tr></thead>
+      <tbody>
+        {% for e in earnings %}
+        <tr>
+          <td>{{ e.date }}</td>
+          <td><b>{{ e.symbol }}</b></td>
+          <td>{{ e.hour or '-' }}</td>
+          <td>{{ e.year }}-Q{{ e.quarter if e.quarter else '-' }}</td>
+          <td>{{ e.eps_estimate if e.eps_estimate is not none else '-' }}</td>
+          <td class="{{ 'ok' if e.eps_actual and e.eps_estimate and e.eps_actual >= e.eps_estimate else 'err' if e.eps_actual else '' }}">{{ e.eps_actual if e.eps_actual is not none else '-' }}</td>
+          <td>{{ '{:,.0f}'.format(e.revenue_estimate) if e.revenue_estimate is not none else '-' }}</td>
+          <td>{{ e.revenue_actual if e.revenue_actual is not none else '-' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- 标的新股（47 平台 finnhub） -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-h">📌 标的新股 <span class="sub">47 平台 finnhub 公司新闻</span></div>
+    <div class="form-row">
+      <form method="post" action="/news/symbol" style="margin:0;display:flex;gap:8px;align-items:center">
+        <input name="symbol" placeholder="标的代码（如 AAPL）" size="16" required>
+        <input name="days" value="3" size="5" title="天数">
+        <button class="btn" type="submit">拉取标的新股</button>
+      </form>
+    </div>
+    {% if symbol_news %}
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
+      {% for n in symbol_news %}
+      <div style="padding:8px 10px;border:1px solid var(--border);border-radius:8px">
+        <a href="{{ n.url }}" target="_blank" style="color:var(--text);text-decoration:none;font-size:13px;font-weight:600">{{ n.title }}</a>
+        {% if n.digest %}<div class="muted" style="margin-top:4px;line-height:1.6">{{ n.digest[:120] }}{% if n.digest|length > 120 %}…{% endif %}</div>{% endif %}
+        <div class="muted" style="margin-top:4px">{{ n.time }} · {{ n.source }} {% if n.extra %}· {{ n.extra }}{% endif %}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- 三源横排卡片 -->
+  {% for src, items in groups.items() %}
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-h">{{ src }} <span class="sub">最近 {{ items|length }} 条</span></div>
+    {% if items %}
+    <div style="display:flex;flex-direction:column;gap:8px">
+      {% for n in items %}
+      <div style="padding:8px 10px;border:1px solid var(--border);border-radius:8px">
+        <a href="{{ n.url }}" target="_blank" style="color:var(--text);text-decoration:none;font-size:13px;font-weight:600">
+          {{ n.title }}</a>
+        {% if n.digest %}<div class="muted" style="margin-top:4px;line-height:1.6">{{ n.digest[:120] }}{% if n.digest|length > 120 %}…{% endif %}</div>{% endif %}
+        <div class="muted" style="margin-top:4px">{{ n.time }} {% if n.extra %}· {{ n.extra }}{% endif %}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="muted">暂无数据，点击「立即拉取入库」</div>
+    {% endif %}
+  </div>
+  {% endfor %}
+
+  <!-- 日志 -->
+  <div class="card">
+    <div class="card-h">📜 操作日志</div>
+    <div style="overflow-x:auto">
+    <table class="table" style="width:100%;font-size:12px">
+      <thead><tr><th>时间</th><th>动作</th><th>源</th><th>入库</th><th>错误</th></tr></thead>
+      <tbody>
+        {% for r in logs %}
+        <tr><td class="muted">{{ r.created_at }}</td><td>{{ r.action }}</td><td>{{ r.source }}</td>
+          <td>{{ r.inserted }}</td><td class="{{ 'err' if r.error else '' }}">{{ r.error or '' }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

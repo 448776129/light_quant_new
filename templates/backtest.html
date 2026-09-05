@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page">
+  <div class="page-h">
+    <h2>📈 历史回测</h2>
+    <div class="muted">内置策略模板 · 纯 pandas 引擎 · 数据来自本地行情库</div>
+  </div>
+
+  <!-- 回测表单 -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-h">▶ 运行回测 <span class="sub">已跑 {{ stats.total }} 次 · {{ stats.symbols }} 标的</span></div>
+    <form method="post" action="/backtest/run">
+      <div class="form-row"><label>标的</label><input name="symbol" required size="12" placeholder="AAPL" value="{{ last_symbol or '' }}"></div>
+      <div class="form-row"><label>策略模板</label>
+        <select name="template" id="btTemplate" onchange="btParams()">
+          {% for tname, t in templates.items() %}
+          <option value="{{ tname }}" {{ 'selected' if tname == last_template else '' }}>{{ t.label }}</option>
+          {% endfor %}
+        </select>
+        <span class="muted" id="btDesc">{{ templates[last_template or 'dual_ma'].desc }}</span></div>
+      <div class="form-row"><label>参数</label><span id="btParamInputs"></span></div>
+      <div class="form-row"><label>初始资金</label><input name="initial_capital" value="10000" size="10"></div>
+      <div class="form-row"><button class="btn" type="submit">运行回测</button></div>
+    </form>
+  </div>
+
+  <!-- 结果 -->
+  {% if result %}
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-h">📊 回测结果 <span class="sub">{{ result.symbol }} · {{ result.template }} · {{ result.start }} ~ {{ result.end }}（{{ result.bars }} 根）</span></div>
+    {% if result.error %}
+    <div class="err">{{ result.error }}</div>
+    {% else %}
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+      <span class="stat"><b style="color:{{ 'var(--green)' if result.return_pct >= 0 else 'var(--red)' }}">{{ result.return_pct }}%</b><span>策略收益</span></span>
+      <span class="stat"><b>{{ result.buy_hold_pct }}%</b><span>买入持有</span></span>
+      <span class="stat"><b>{{ result.max_drawdown_pct }}%</b><span>最大回撤</span></span>
+      <span class="stat"><b>{{ result.win_rate * 100 if result.win_rate is not none else '-' }}%</b><span>胜率</span></span>
+      <span class="stat"><b>{{ result.trade_count }}</b><span>交易次数</span></span>
+      <span class="stat"><b>{{ result.final_capital }}</b><span>期末资金</span></span>
+    </div>
+    <div style="overflow-x:auto">
+    <table class="table" style="width:100%;font-size:12px">
+      <thead><tr><th>#</th><th>买入时间</th><th>买入价</th><th>卖出时间</th><th>卖出价</th><th>收益%</th></tr></thead>
+      <tbody>
+        {% for t in result.trades %}
+        <tr>
+          <td>{{ loop.index }}</td><td>{{ t.entry_time }}</td><td>{{ t.entry_price }}</td>
+          <td>{{ t.exit_time }}</td><td>{{ t.exit_price }}</td>
+          <td style="color:{{ 'var(--green)' if t.pnl_pct >= 0 else 'var(--red)' }}">{{ t.pnl_pct }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <!-- 历史 -->
+  <div class="card">
+    <div class="card-h">📜 回测历史 <span class="sub">最近 {{ history|length }} 次</span></div>
+    <div style="overflow-x:auto">
+    <table class="table" style="width:100%;font-size:12px">
+      <thead><tr><th>时间</th><th>标的</th><th>模板</th><th>收益%</th><th>回撤%</th><th>胜率</th></tr></thead>
+      <tbody>
+        {% for h in history %}
+        <tr>
+          <td class="muted">{{ h.created_at }}</td>
+          <td><b>{{ h.symbol }}</b></td>
+          <td>{{ h.template }}</td>
+          <td style="color:{{ 'var(--green)' if (h.result.return_pct or 0) >= 0 else 'var(--red)' }}">{{ h.result.return_pct }}</td>
+          <td>{{ h.result.max_drawdown_pct }}</td>
+          <td>{{ h.result.win_rate }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const BT_TEMPLATES = {{ templates_json|safe }};
+function btParams(){
+  const sel = document.getElementById('btTemplate');
+  const t = BT_TEMPLATES[sel.value];
+  document.getElementById('btDesc').textContent = t.desc;
+  const box = document.getElementById('btParamInputs');
+  box.innerHTML = Object.keys(t.default).map(k => {
+    const d = t.default[k];
+    return '<span style="margin-right:10px">' + k + ' <input name="param_' + k + '" value="' + d + '" size="5"></span>';
+  }).join('');
+}
+btParams();
+</script>
+{% endblock %}

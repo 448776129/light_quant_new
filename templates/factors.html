@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page">
+  <div class="page-h">
+    <h2>🧮 因子策略</h2>
+    <div class="muted">6 个技术因子族 · 横截面多空 / 单标的条件信号</div>
+  </div>
+
+  <!-- 因子族 -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-h">📐 因子族</div>
+    <div style="overflow-x:auto">
+    <table class="table" style="width:100%;font-size:12px">
+      <thead><tr><th>因子</th><th>说明</th><th>参数</th><th>方向</th></tr></thead>
+      <tbody>
+        {% for f in families %}
+        <tr>
+          <td><b>{{ f.name }}</b></td>
+          <td class="muted">{{ f.desc }}</td>
+          <td>
+            {% for pn, pr in f.params.items() %}{{ pn }}: {{ pr.lo }}~{{ pr.hi }} {% endfor %}
+          </td>
+          <td>{{ '高→多' if f.sign == 1 else '低→多' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+  <!-- 新建策略 -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-h">➕ 新建策略</div>
+    <form method="post" action="/factors/create">
+      <div class="form-row"><label>名称</label><input name="name" required size="30"></div>
+      <div class="form-row"><label>类型</label>
+        <select name="category">
+          <option value="screener">横截面组合（combo）</option>
+          <option value="single">单标的条件（conditions）</option>
+        </select></div>
+      <div class="form-row"><label>定义 JSON</label>
+        <textarea name="definition" rows="6" style="width:100%;font-family:monospace;font-size:12px;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--card-2);color:var(--text)">{{ default_def }}</textarea></div>
+      <div class="form-row"><button class="btn" type="submit">创建</button></div>
+    </form>
+  </div>
+
+  <!-- 策略列表 -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-h">📋 策略列表 <span class="sub">共 {{ strategies|length }} 个</span></div>
+    <div style="overflow-x:auto">
+    <table class="table" style="width:100%;font-size:12px">
+      <thead><tr><th>ID</th><th>名称</th><th>类型</th><th>状态</th><th>定义</th><th>操作</th></tr></thead>
+      <tbody>
+        {% for s in strategies %}
+        <tr>
+          <td>{{ s.id }}</td>
+          <td><b>{{ s.name }}</b></td>
+          <td>{{ s.definition.get('category', 'single') }}</td>
+          <td>{{ '✅ 启用' if s.enabled else '⏸ 停用' }}</td>
+          <td class="muted">{{ s.definition_json_short }}</td>
+          <td style="white-space:nowrap">
+            {% if s.definition.get('category') == 'single' %}
+            <form method="post" action="/factors/{{ s.id }}/evaluate" style="display:inline;margin:0">
+              <button class="btn ghost" style="padding:4px 10px" type="submit">评估</button></form>
+            {% else %}
+            <form method="post" action="/factors/{{ s.id }}/evaluate" style="display:inline;margin:0">
+              <button class="btn ghost" style="padding:4px 10px" type="submit">选股</button></form>
+            {% endif %}
+            <form method="post" action="/factors/{{ s.id }}/toggle" style="display:inline;margin:0">
+              <button class="btn ghost" style="padding:4px 10px" type="submit">{{ '停用' if s.enabled else '启用' }}</button></form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+  <!-- 评估结果 -->
+  {% if result %}
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-h">📊 最近评估结果</div>
+    {% if result.error %}
+    <div class="err">{{ result.error }}</div>
+    {% else %}
+    <div class="muted" style="margin-bottom:8px">日期 {{ result.date }} · 标的池 {{ result.universe }} 个 · 生成 {{ result.signals|length }} 条信号</div>
+    <div style="overflow-x:auto">
+    <table class="table" style="width:100%;font-size:12px">
+      <thead><tr><th>方向</th><th>标的</th><th>分数</th><th>价格</th></tr></thead>
+      <tbody>
+        {% for sg in result.signals %}
+        <tr>
+          <td style="color:{{ 'var(--green)' if sg.type == 'buy' else 'var(--red)' }}">{{ '买入' if sg.type == 'buy' else '卖出' }}</td>
+          <td><b>{{ sg.symbol }}</b></td>
+          <td>{{ sg.score }}</td>
+          <td>{{ sg.price or '-' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <!-- 信号历史 -->
+  <div class="card">
+    <div class="card-h">📡 信号历史 <span class="sub">最近 {{ signals|length }} 条</span></div>
+    <div style="overflow-x:auto">
+    <table class="table" style="width:100%;font-size:12px">
+      <thead><tr><th>时间</th><th>策略</th><th>方向</th><th>标的</th><th>分数</th><th>价格</th></tr></thead>
+      <tbody>
+        {% for sg in signals %}
+        <tr>
+          <td class="muted">{{ sg.created_at }}</td>
+          <td>{{ sg.strategy_id }}</td>
+          <td style="color:{{ 'var(--green)' if sg.signal_type == 'buy' else 'var(--red)' }}">{{ '买入' if sg.signal_type == 'buy' else '卖出' }}</td>
+          <td><b>{{ sg.symbol }}</b></td>
+          <td>{{ sg.score }}</td>
+          <td>{{ sg.price or '-' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

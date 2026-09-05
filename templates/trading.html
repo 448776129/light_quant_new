@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page">
+  <div class="page-h">
+    <h2>💰 自动交易</h2>
+    <div class="muted">选择策略 + 勾选模拟账户 → 信号自动下单 · 事件驱动解耦</div>
+  </div>
+
+  <!-- 自动交易配置 -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-h">⚙️ 自动交易配置 <span class="sub">选择策略与模拟账户，开启后该策略产出的信号自动下单</span></div>
+    <form method="post" action="/trading/settings">
+      <div class="form-row"><label>自动交易</label>
+        <select name="enabled">
+          <option value="true" {{ 'selected' if cfg.enabled == 'true' else '' }}>开启</option>
+          <option value="false" {{ '' if cfg.enabled == 'true' else 'selected' }}>关闭</option>
+        </select>
+        <span class="muted">关闭时仅保留信号，不下单（安全默认）</span></div>
+      <div class="form-row"><label>模拟账户</label>
+        <select name="account">
+          {% for a in accounts %}
+          <option value="{{ a.id }}" {{ 'selected' if a.id == selected_account else '' }}>{{ a.name }}（{{ a.id }}）</option>
+          {% endfor %}
+        </select>
+        <span class="muted">勾选哪个模拟盘账号执行自动交易</span></div>
+      <div class="form-row"><label>参与策略</label>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          {% for s in strategies %}
+          <label style="display:flex;align-items:center;gap:5px;font-size:13px;font-weight:400;min-width:0">
+            <input type="checkbox" name="strategy_ids" value="{{ s.id }}" {{ 'checked' if s.auto_selected else '' }}>
+            <span>#{{ s.id }} {{ s.name }}</span>
+          </label>
+          {% else %}
+          <span class="muted">暂无策略（请先到「因子策略」栏目创建）</span>
+          {% endfor %}
+        </div>
+        <span class="muted">全不勾选 = 所有策略都参与；勾选 = 仅勾选的策略参与</span></div>
+      <div class="form-row"><label>每信号股数</label><input name="qty" value="{{ cfg.qty }}" size="6"></div>
+      <div class="form-row"><label>订单类型</label>
+        <select name="order_type">
+          <option value="market" {{ 'selected' if cfg.order_type == 'market' else '' }}>市价</option>
+          <option value="limit" {{ 'selected' if cfg.order_type == 'limit' else '' }}>限价</option>
+        </select></div>
+      <div class="form-row"><button class="btn" type="submit">保存自动交易配置</button></div>
+    </form>
+  </div>
+
+  <!-- 账户 + 持仓 -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-h">🏦 账户 <span class="sub">查看账号：{{ selected_account }} · <a href="/trading" style="color:var(--cyan)">自动交易账号</a></span></div>
+    {% if acc.available and not acc.error %}
+    <div style="margin-bottom:10px">
+      <span class="stat"><b>{{ acc.equity }}</b><span>净值</span></span>
+      <span class="stat"><b>{{ acc.cash }}</b><span>现金</span></span>
+      <span class="stat"><b>{{ acc.buying_power }}</b><span>购买力</span></span>
+    </div>
+    {% elif acc.error %}
+    <div class="err">{{ acc.error }}</div>
+    {% else %}
+    <div class="muted">未配置 Alpaca 模拟账号。自动交易将降级为仅记录，不会真下单。</div>
+    {% endif %}
+
+    <div class="card-h" style="margin-top:6px">📦 当前持仓 <span class="sub">Alpaca SDK /positions 实时</span></div>
+    {% if positions %}
+    <div style="overflow-x:auto">
+    <table class="table" style="width:100%;font-size:12px">
+      <thead><tr><th>标的</th><th>数量</th><th>均价</th><th>现价</th><th>市值</th><th>未实现盈亏</th><th>盈亏%</th></tr></thead>
+      <tbody>
+        {% for p in positions %}
+        <tr>
+          <td><b>{{ p.symbol }}</b></td>
+          <td>{{ p.qty }}</td>
+          <td>{{ p.avg_entry_price }}</td>
+          <td>{{ p.current_price }}</td>
+          <td>{{ p.market_value }}</td>
+          <td style="color:{{ 'var(--green)' if (p.unrealized_pl|float or 0) >= 0 else 'var(--red)' }}">{{ p.unrealized_pl }}</td>
+          <td style="color:{{ 'var(--green)' if (p.unrealized_plpc|float or 0) >= 0 else 'var(--red)' }}">{{ (p.unrealized_plpc|float * 100)|round(2) }}%</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <div class="muted">暂无持仓{{ '（Alpaca 未配置）' if not acc.available else '' }}</div>
+    {% endif %}
+  </div>
+
+  <!-- 手动下单 -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-h">🖐 手动下单 <span class="sub">指定账号（默认自动交易账号）</span></div>
+    <form method="post" action="/trading/order">
+      <div class="form-row">
+        <label>标的</label><input name="symbol" size="10" placeholder="AAPL" required>
+        <select name="side">
+          <option value="buy">买入</option>
+          <option value="sell">卖出</option>
+        </select>
+        <input name="qty" size="6" placeholder="股数" required>
+        <select name="account">
+          {% for a in accounts %}
+          <option value="{{ a.id }}" {{ 'selected' if a.id == selected_account else '' }}>{{ a.name }}</option>
+          {% endfor %}
+        </select>
+        <button class="btn" type="submit">下单</button>
+      </div>
+    </form>
+    {% if order_result %}<pre class="result">{{ order_result }}</pre>{% endif %}
+  </div>
+
+  <!-- 订单 -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-h">📋 订单记录 <span class="sub">共 {{ stats.total }} 笔</span></div>
+    <div style="overflow-x:auto">
+    <table class="table" style="width:100%;font-size:12px">
+      <thead><tr><th>时间</th><th>标的</th><th>方向</th><th>数量</th><th>类型</th><th>状态</th><th>消息</th></tr></thead>
+      <tbody>
+        {% for o in orders %}
+        <tr>
+          <td class="muted">{{ o.created_at }}</td>
+          <td><b>{{ o.symbol }}</b></td>
+          <td style="color:{{ 'var(--green)' if o.side == 'buy' else 'var(--red)' }}">{{ '买入' if o.side == 'buy' else '卖出' }}</td>
+          <td>{{ o.qty }}</td><td>{{ o.order_type }}</td>
+          <td>{{ o.status }}</td><td class="muted">{{ o.message }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+  <!-- 日志 -->
+  <div class="card">
+    <div class="card-h">📜 事件日志</div>
+    <div style="overflow-x:auto">
+    <table class="table" style="width:100%;font-size:12px">
+      <thead><tr><th>时间</th><th>事件</th><th>消息</th></tr></thead>
+      <tbody>
+        {% for l in logs %}
+        <tr><td class="muted">{{ l.created_at }}</td><td>{{ l.event }}</td><td class="muted">{{ l.message }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

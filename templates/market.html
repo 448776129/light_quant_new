@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page">
+  <div class="page-h">
+    <h2>📊 历史行情拉取</h2>
+    <div class="muted">数据源：<a href="{{ tv_base }}" target="_blank" style="color:var(--cyan)">{{ tv_base }}</a></div>
+  </div>
+
+  <!-- 统计 -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-h">数据概览</div>
+    <div>
+      <span class="stat"><b>{{ stats.symbols }}</b><span>标的</span></span>
+      <span class="stat"><b>{{ '{:,}'.format(stats.rows) }}</b><span>K线行</span></span>
+      <span class="stat"><b>{{ stats.max_dt or '-' }}</b><span>最新数据</span></span>
+      <span class="stat"><b>{{ csv_files }}</b><span>本地CSV文件</span></span>
+    </div>
+    <div class="muted" style="margin-top:8px">本地 CSV 目录：<code>{{ csv_dir }}</code></div>
+  </div>
+
+  <!-- 实时行情（47 平台 futu，含延长时段） -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-h">⚡ 实时行情 <span class="sub">47 平台 futu · WS {{ '🟢 已连接' if ws.connected else '🔴 未连接' }}</span></div>
+    <div class="form-row">
+      <form method="post" action="/market/quote" style="margin:0;display:flex;gap:8px;align-items:center">
+        <input name="symbol" placeholder="标的代码（如 AAPL）" size="14" required>
+        <button class="btn" type="submit">查询报价</button>
+      </form>
+      <form method="post" action="/market/subscribe" style="margin:0;display:flex;gap:8px;align-items:center">
+        <input name="symbols" placeholder="订阅实时推送（逗号分隔）" size="24">
+        <button class="btn ghost" type="submit">订阅</button>
+      </form>
+    </div>
+    <div class="muted">已订阅：{{ ws.subscribed|join(', ') or '无' }}</div>
+    {% if quote %}
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px">
+      <span class="stat"><b style="color:{{ 'var(--green)' if (quote.change_pct or 0) >= 0 else 'var(--red)' }}">{{ quote.last_price }}</b><span>{{ quote.symbol }} 最新价</span></span>
+      <span class="stat"><b>{{ quote.change_pct }}%</b><span>涨跌幅</span></span>
+      <span class="stat"><b>{{ quote.high }}</b><span>最高</span></span>
+      <span class="stat"><b>{{ quote.low }}</b><span>最低</span></span>
+      <span class="stat"><b>{{ quote.prev_close }}</b><span>昨收</span></span>
+      <span class="stat"><b>{{ quote.timestamp }}</b><span>时间</span></span>
+    </div>
+    {% if orderbook %}
+    <div style="overflow-x:auto;margin-top:10px">
+    <table class="table" style="width:100%;font-size:12px">
+      <thead><tr><th>档位</th><th>买价</th><th>买量</th><th>卖价</th><th>卖量</th></tr></thead>
+      <tbody>
+        {% for i in range(5) %}
+        <tr>
+          <td>{{ i + 1 }}</td>
+          <td>{{ orderbook.bid_prices[i] if orderbook.bid_prices|length > i else '-' }}</td>
+          <td>{{ orderbook.bid_sizes[i] if orderbook.bid_sizes|length > i else '-' }}</td>
+          <td>{{ orderbook.ask_prices[i] if orderbook.ask_prices|length > i else '-' }}</td>
+          <td>{{ orderbook.ask_sizes[i] if orderbook.ask_sizes|length > i else '-' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% endif %}
+    {% endif %}
+  </div>
+
+  <!-- 配置 -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-h">⚙️ 拉取配置 <span class="sub">面板可改，定时自动生效</span></div>
+    <form method="post" action="/market/settings">
+      <div class="form-row"><label>定时拉取</label>
+        <select name="enabled">
+          <option value="true" {{ 'selected' if cfg.enabled == 'true' else '' }}>开启</option>
+          <option value="false" {{ '' if cfg.enabled == 'true' else 'selected' }}>关闭</option>
+        </select>
+        <span class="muted">开启后按间隔自动拉取最新K线</span></div>
+      <div class="form-row"><label>间隔（秒）</label><input name="interval_sec" value="{{ cfg.interval_sec }}" size="8"></div>
+      <div class="form-row"><label>K线周期</label>
+        <select name="interval">
+          {% for iv in intervals %}<option value="{{ iv }}" {{ 'selected' if iv == cfg.interval else '' }}>{{ iv }}</option>{% endfor %}
+        </select></div>
+      <div class="form-row"><label>拉取标的</label><input name="symbols" value="{{ cfg.symbols }}" size="50"
+        placeholder="逗号分隔；留空=全部已有标的"></div>
+      <div class="form-row"><button class="btn" type="submit">保存配置</button></div>
+    </form>
+  </div>
+
+  <!-- 手动操作 -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-h">🔄 手动操作</div>
+    <div class="form-row">
+      <form method="post" action="/market/import" style="margin:0"><button class="btn ghost" type="submit">导入本地 CSV（gzip）</button></form>
+      <form method="post" action="/market/pull" style="margin:0;display:flex;gap:8px;align-items:center">
+        <input name="symbols" placeholder="标的(逗号分隔，空=全部后台拉取)" size="34">
+        <button class="btn" type="submit">立即拉取最新数据</button></form>
+    </div>
+    <div class="muted">导入：把 {{ csv_dir }}/us/kline/*.csv 全部入库；拉取：从 stocks-tv 增量追加（全部标的在后台执行，自动刷新状态）</div>
+    {% if result %}
+    <pre class="result">{{ result }}</pre>
+    {% endif %}
+    <div id="bgState" class="muted" style="margin-top:8px"></div>
+  </div>
+
+  <!-- 日志 -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-h">📜 操作日志 <span class="sub">最近 {{ logs|length }} 条</span></div>
+    <div style="overflow-x:auto">
+    <table class="table" style="width:100%;font-size:12px">
+      <thead><tr><th>时间</th><th>动作</th><th>标的</th><th>周期</th><th>新增</th><th>更新</th><th>错误</th></tr></thead>
+      <tbody>
+        {% for r in logs %}
+        <tr>
+          <td class="muted">{{ r.created_at }}</td>
+          <td>{{ r.action }}</td>
+          <td>{{ r.symbol or '-' }}</td>
+          <td>{{ r.interval or '-' }}</td>
+          <td>{{ r.inserted }}</td>
+          <td>{{ r.updated }}</td>
+          <td class="{{ 'err' if r.error else '' }}">{{ r.error or '' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+  <!-- 标的列表 -->
+  <div class="card">
+    <div class="card-h">📈 已入库标的 <span class="sub">{{ symbols_count }} 个</span></div>
+    <div class="muted" style="line-height:2">
+      {% for s in symbols %}<span class="tag">{{ s }}</span>{% endfor %}
+      {% if symbols_count > 200 %}…{% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function pollBg(){
+  try{
+    const r = await fetch('/market/bg-status');
+    const s = await r.json();
+    const el = document.getElementById('bgState');
+    if(!el) return;
+    if(s.running){
+      el.innerHTML = '<span class="ok">⏳ 后台拉取执行中（标的 ' + (s.symbols || '全部') + '，开始于 ' + (s.started_at||'') + '）…</span>';
+      setTimeout(pollBg, 3000);
+    } else if(s.last_result){
+      const r2 = s.last_result;
+      el.innerHTML = '<span>✅ 后台拉取完成：新增 <b>' + (r2.inserted||0) + '</b> / 更新 <b>' + (r2.updated||0) + '</b>' +
+        (r2.errors ? ' / 错误 <b class="err">' + r2.errors + '</b>' : '') + '（完成于 ' + (s.finished_at||'') + '）</span>';
+    }
+  }catch(e){}
+}
+pollBg();
+</script>
+{% endblock %}
