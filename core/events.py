@@ -21,11 +21,17 @@ _async_handlers: dict[str, list[Callable]] = defaultdict(list)
 
 
 def subscribe(event: str, handler: Callable) -> None:
-    """注册事件处理器。async 函数走异步队列，同步函数同步执行。"""
-    if inspect.iscoroutinefunction(handler):
-        _async_handlers[event].append(handler)
-    else:
-        _handlers[event].append(handler)
+    """注册事件处理器。async 函数走异步队列，同步函数同步执行。
+
+    幂等：同一 handler 对同一事件只注册一次。
+    原因：入口模块可能被重复执行（`python -m light_quant_new.main` 时
+    __main__ 与 uvicorn 的字符串导入各一次），若不幂等，signal.created
+    会被订阅多次，导致同一信号触发多笔下单。
+    """
+    bucket = _async_handlers if inspect.iscoroutinefunction(handler) else _handlers
+    if any(h is handler for h in bucket[event]):
+        return
+    bucket[event].append(handler)
 
 
 def publish(event: str, payload: Any = None) -> None:

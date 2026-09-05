@@ -108,10 +108,10 @@ def evaluate_screener(sid: int, ktype: str = "K_DAY",
     流程：取股票池行情 → 各因子横截面 z → 等权复合分 → 最新交易日排序
     → 输出 top/bottom 信号并入库 + 发布事件。
     """
-    s = get_strategy(sid)
-    if not s:
+    strat = get_strategy(sid)
+    if not strat:
         return {"error": "strategy not found"}
-    defn = s["definition"]
+    defn = strat["definition"]
     combo = defn.get("combo")
     if not combo:
         return {"error": "该策略不是 combo 组合模式"}
@@ -121,21 +121,29 @@ def evaluate_screener(sid: int, ktype: str = "K_DAY",
     # 各因子横截面 z（每因子 date×symbol 宽表 → 行 z）→ 等权平均
     zsum = None
     zcount = 0
+    failed: list[dict] = []
     for spec in combo:
         fam = spec.get("family")
         params = spec.get("params") or {}
         try:
-            s = ff.compute_raw(fam, params, df)
+            series = ff.compute_raw(fam, params, df)
         except Exception as e:
+            # 不静默吞掉：因子失败必须回传给用户，否则只表现为「信号变少」
+            failed.append({"family": fam, "params": params, "reason": f"计算异常: {e}"})
+            log.warning("factor_failed", extra={"strategy_id": sid, "family": fam,
+                                                "err": str(e)})
             continue
-        if s.empty:
+        if series.empty:
+            failed.append({"family": fam, "params": params,
+                           "reason": "因子值为空（窗口参数超过数据长度？）"})
+            log.warning("factor_empty", extra={"strategy_id": sid, "family": fam})
             continue
-        w = s.unstack("symbol")
+        w = series.unstack("symbol")
         z = ff.z_per_date(w)
         zsum = z if zsum is None else zsum.add(z, fill_value=0)
         zcount += 1
     if zcount == 0 or zsum is None:
-        return {"error": "因子计算为空（数据不足？）"}
+        return {"error": f"全部 {len(combo)} 个因子均不可用", "failed_factors": failed}
     comp = zsum.div(zcount)                      # date×symbol 复合分
     last = comp.iloc[-1].dropna().sort_values(ascending=False)   # 最新交易日
     if last.empty:
@@ -164,9 +172,11 @@ def evaluate_screener(sid: int, ktype: str = "K_DAY",
                                          sg["price"] or 0.0, sg["score"])
         stored.append({**sg, "id": sig_id})
     publish("signal.created", {"strategy_id": sid, "signals": stored})
-    log.info("screener_eval", extra={"strategy_id": sid, "signals": len(stored)})
+    log.info("screener_eval", extra={"strategy_id": sid, "signals": len(stored),
+                                     "failed": len(failed)})
     return {"strategy_id": sid, "date": str(comp.index[-1]), "universe": n,
-            "signals": stored, "top": list(top.index), "bottom": list(bottom.index)}
+            "signals": stored, "top": list(top.index), "bottom": list(bottom.index),
+            "failed_factors": failed}
 
 
 def evaluate_single(sid: int, ktype: str = "K_DAY") -> dict:

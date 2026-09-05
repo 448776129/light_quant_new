@@ -130,4 +130,8 @@ async def index():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("light_quant_new.main:app", host=config.HOST, port=config.PORT, log_level="info")
+
+    # 传 app 对象而非 "light_quant_new.main:app" 字符串：
+    # 传字符串会让 uvicorn 再导入一次本模块，模块级副作用（事件订阅、
+    # provider 注入、路由注册）全部执行两遍。
+    uvicorn.run(app, host=config.HOST, port=config.PORT, log_level="info")

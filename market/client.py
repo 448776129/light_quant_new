@@ -90,9 +90,14 @@ def _normalize_rows(rows: list[dict]) -> list[dict]:
 
 
 def _num(v: Any, cast=float):
+    """数值解析。cast=int 时先转 float 再取整：
+    历史 CSV 的 Volume 常写作 1234567.0 / 1.2345E7，直接 int() 会 ValueError。
+    """
     if v is None or str(v).strip() == "":
         return None
     try:
+        if cast is int:
+            return int(float(v))
         return cast(v)
     except (TypeError, ValueError):
         return None

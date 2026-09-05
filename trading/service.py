@@ -56,7 +56,11 @@ def active_strategy_ids() -> list[int]:
 
 
 def setup() -> None:
-    """注册事件订阅（main 组装时调用一次）。"""
+    """注册事件订阅（main 组装时调用一次）。
+
+    幂等性由 core.events.subscribe 保证（同一 handler 对同一事件只注册一次），
+    此处不使用模块级 done 标志——那会让 events.clear() 之后无法重新注册。
+    """
     events.subscribe("signal.created", on_signal_created)
     log.info("trading_setup", extra={"accounts": len(client.accounts()),
                                      "mode": config.ALPACA_TRADING_MODE})

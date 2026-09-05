@@ -86,19 +86,22 @@ def list_news(limit: int = 100, source: str = "") -> list[dict]:
         where, params = "source=?", [source]
     sql = f"SELECT * FROM news {'WHERE ' + where if where else ''} ORDER BY id DESC LIMIT ?"
     params.append(int(limit))
-    return storage.query("news", sql, params)
+    with storage.owner_scope(OWNER):
+        return storage.query("news", sql, params)
 
 
 def news_stats() -> dict:
-    r = storage.query_one("news",
-                          "SELECT COUNT(*) n, COUNT(DISTINCT source) srcs FROM news")
+    with storage.owner_scope(OWNER):
+        r = storage.query_one("news",
+                              "SELECT COUNT(*) n, COUNT(DISTINCT source) srcs FROM news")
     return {"rows": (r or {}).get("n", 0), "sources": (r or {}).get("srcs", 0)}
 
 
 def latest_by_source(limit_per: int = 5) -> dict[str, list[dict]]:
     """按源分组取最近 N 条（栏目横排卡片）。"""
-    srcs = [r["source"] for r in storage.query(
-        "news", "SELECT DISTINCT source FROM news ORDER BY source")]
+    with storage.owner_scope(OWNER):
+        srcs = [r["source"] for r in storage.query(
+            "news", "SELECT DISTINCT source FROM news ORDER BY source")]
     out = {}
     for s in srcs:
         out[s] = list_news(limit_per, s)
@@ -141,7 +144,9 @@ def add_log(action: str, source: str, inserted: int = 0, error: str = "") -> Non
 
 
 def list_logs(limit: int = 20) -> list[dict]:
-    return storage.query("news_log", "SELECT * FROM news_log ORDER BY id DESC LIMIT ?", [int(limit)])
+    with storage.owner_scope(OWNER):
+        return storage.query(
+            "news_log", "SELECT * FROM news_log ORDER BY id DESC LIMIT ?", [int(limit)])
 
 
 # ── earnings（财报）──

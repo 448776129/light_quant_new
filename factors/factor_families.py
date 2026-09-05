@@ -39,7 +39,8 @@ def _raw_fn(family: str, df: pd.DataFrame, params: dict) -> pd.Series:
         return g.shift(S) / g.shift(L + S) - 1
     if family == "reversal":
         W = int(params.get("W", 20))
-        return df.groupby("symbol")[p].pct_change(W)
+        # 短期反转：过去 W 日收益取负（此处取负，FAMILIES sign 保持 +1）
+        return -df.groupby("symbol")[p].pct_change(W)
     if family == "volatility":
         W = int(params.get("W", 20))
         ret = df.groupby("symbol")[p].pct_change(1)

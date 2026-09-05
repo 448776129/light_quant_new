@@ -128,6 +128,15 @@ def execute(table: str, sql: str, params: list | tuple = ()) -> int:
     return cur.rowcount if cur.rowcount is not None else 0
 
 
+def executemany(table: str, sql: str, param_list: list) -> None:
+    """批量执行写语句（INSERT/UPDATE 的 executemany），用于大批量导入。
+
+    与 execute 同样遵循表归属校验；param_list 为参数元组列表。
+    """
+    _check_access(table)
+    _conn().executemany(sql, param_list)
+
+
 def query(table: str, sql: str, params: list | tuple = ()) -> list[dict]:
     """查询，返回 dict 列表。"""
     _check_access(table)
